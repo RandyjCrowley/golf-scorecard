@@ -80,59 +80,126 @@ Response rounds include: `id`, `courseName`, `playerName`, `date`, `holes`, `tot
 - `golf_scorecard.db` — SQLite database file (created/updated at runtime).
 - `public/` — `index.html`, `style.css`, `script.js`.
 
-## Porting to Go (Echo + SQLite)
+## Porting to Go (Echo + SQLite) — if you’re new to Go
 
-The API and `public/` frontend can be recreated in Go while keeping **the same paths and JSON field names** (`courseName`, `holeNumber`, etc.) so the browser code stays as-is.
+Go (often called **Golang**) is a **compiled** language: you write `.go` files, run `go build` or `go run`, and get a single binary (like a `.exe` on Windows). There is no separate interpreter like CPython.
 
-### What to do (high-level checklist)
+You can rebuild **this same app** in Go: keep `public/` and the **URLs + JSON shapes** the same, and the browser will not care that the server is Go instead of Python.
 
-1. **`go mod init`** and add dependencies, for example:
-   - [Echo](https://echo.labstack.com/) — HTTP server and routing.
-   - [`database/sql`](https://pkg.go.dev/database/sql) — database API (stdlib).
-   - A SQLite driver (see [SQLite drivers](#sqlite-drivers) below).
-2. **Copy `schema.sql`** (and optional seed logic) into your Go module; run `CREATE TABLE` on startup, same as `init_db()`.
-3. **Open the DB once** at startup (`sql.Open`) and pass a `*sql.DB` into handlers (or a small repository type), using **only** `?` placeholders and `db.Query`, `QueryRow`, `Exec` — never `fmt.Sprintf` for user input in SQL.
-4. **On every new connection** SQLite needs foreign keys: `_fk=1` in the DSN (see below) or `db.Exec("PRAGMA foreign_keys = ON")` after open (some drivers apply PRAGMA per-connection; verify with your driver docs).
-5. **Echo routes** (order matters: static and fixed paths before `:id`):
-   - `GET /` → serve `index.html` (e.g. `echo.WrapHandler` + `http.FileServer`, or `c.File` with path to `public/index.html`).
-   - `GET /static/*` → `echo.Static("/static", "public")` (or `embed.FS` in production).
-   - Mount `/api/...` JSON handlers to mirror this README’s [API routes](#api-routes).
-6. **Structs** with `json:"courseName"` tags matching FastAPI/Pydantic; validate request bodies (e.g. 9 or 18 holes) in Go and return `400`/`422`-style errors as JSON if you want parity with FastAPI.
-7. **Computed fields**: compute `totalPar`, `totalScore`, `relativeToPar` when building the response struct (same as Python).
+### Install Go and sanity-check
 
-### Echo tips
+1. Download and install from the official guide: [https://go.dev/doc/install](https://go.dev/doc/install).
+2. Open a terminal and run:
 
-- Guide: [Echo — Quick start](https://echo.labstack.com/docs/quick-start) and [Static files](https://echo.labstack.com/docs/cookbook/static-files).
-- **JSON**: `c.Bind(&body)` for incoming JSON; `return c.JSON(http.StatusOK, round)` for responses.
-- **Path params**: `c.Param("id")` for round IDs; register `GET /api/rounds/:id` only after routes like `/api/rounds/page` and `/api/rounds/count` so literal segments are not swallowed by `:id`.
-- **Middleware**: [Logger](https://echo.labstack.com/middleware/logger) and [Recover](https://echo.labstack.com/middleware/recover) are useful early; enable Gzip only if you understand buffering implications for streaming.
+```bash
+go version
+```
 
-### SQLite drivers
+You should see a version line (for example `go1.22` or newer). If the command is not found, fix your `PATH` using the instructions for your OS on that same page.
 
-| Driver | Notes |
-|--------|--------|
-| [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) | Pure Go, **no CGO**; easy cross-compiles. DSN example: `file:golf_scorecard.db?_fk=1`. |
-| [`github.com/mattn/go-sqlite3`](https://github.com/mattn/go-sqlite3) | CGO + system SQLite; common in older tutorials; requires a C toolchain on your machine. |
+### Mindset: Python vs Go (very short)
 
-Docs: [Go database/sql tutorial](https://go.dev/doc/database/querying), [SQLite PRAGMA foreign_keys](https://sqlite.org/pragma.html#pragma_foreign_keys).
+| Idea | Python (this project) | Go |
+|------|------------------------|-----|
+| Project metadata | `requirements.txt` | `go.mod` (created with `go mod init`) |
+| Entry point | `uvicorn main:app` | `package main` + `func main()` in a file like `main.go`; run with `go run .` |
+| HTTP framework | FastAPI | [Echo](https://echo.labstack.com/) (or others; here we assume Echo) |
+| Request/response shapes | Pydantic models | `struct` types with struct tags such as `` `json:"courseName"` `` on fields |
+| Add a dependency | `pip install …` | `go get example.com/module@version` (writes into `go.mod`) |
+| Database | `sqlite3` module | `database/sql` + a SQLite **driver** package |
 
-### Troubleshooting
+**Exported names:** In Go, a type or field that must be visible outside its package must **start with a capital letter** (`CourseName`, `Round`). The JSON field name sent on the wire can still be camelCase using a struct tag:
 
-- **`database is locked`**: Use a single shared `*sql.DB`, set [`db.SetMaxOpenConns(1)`](https://pkg.go.dev/database/sql#DB.SetMaxOpenConns) for SQLite, and avoid long-lived transactions in dev.
-- **Foreign key deletes don’t cascade**: Confirm `_fk=1` or `PRAGMA foreign_keys=ON` on the **same** connection that runs deletes; SQLite ignores FKs if the pragma is off.
-- **404 on `/static/...`**: Check `echo.Static` root matches your repo’s `public` folder and that paths in HTML are `/static/...` (leading slash).
-- **Empty JSON or wrong field names**: Struct fields must be exported (capitalized) and tagged `json:"courseName"` to match the frontend.
-- **CGO build fails** (`go-sqlite3`): Switch to `modernc.org/sqlite` or install Xcode CLI tools / gcc on Linux; see [Go CGO wiki](https://go.dev/wiki/cgo).
-- **`embed.FS` paths**: Use forward slashes (e.g. `//go:embed public/*`) and open `index.html` as `public/index.html` inside the embed — see [`embed` package](https://pkg.go.dev/embed).
+```go
+CourseName string `json:"courseName"`
+```
 
-### Documentation sites
+### Vocabulary you’ll see in tutorials
 
-| Topic | Where to read |
-|--------|----------------|
-| Echo | [https://echo.labstack.com/docs](https://echo.labstack.com/docs) |
-| Standard library (`database/sql`, `net/http`, `embed`) | [https://pkg.go.dev/std](https://pkg.go.dev/std) |
-| Go modules & commands | [https://go.dev/doc/modules](https://go.dev/doc/modules) |
-| Effective Go | [https://go.dev/doc/effective_go](https://go.dev/doc/effective_go) |
-| SQLite language & pragmas | [https://sqlite.org/docs.html](https://sqlite.org/docs.html) |
+- **Package:** A folder of `.go` files that belong together. `package main` means “build a program.”
+- **Module:** Your whole project + its dependency list (`go.mod`).
+- **Standard library:** Built-in packages like `database/sql`, `net/http`, `embed` — no install step.
 
-The frontend can stay unchanged if you keep the same URLs and JSON shape.
+### What you will actually build (order that works well)
+
+1. **Start a module** in a new folder (keep your `public/` and `schema.sql` next to your Go files or copy them in):
+
+```bash
+mkdir golf-scorecard-go && cd golf-scorecard-go
+go mod init example.com/golf-scorecard
+```
+
+(Replace `example.com/golf-scorecard` with any module path you like; it only needs to be unique-ish on your machine.)
+
+2. **Add Echo and SQLite support** (exact commands may vary slightly by version):
+
+```bash
+go get github.com/labstack/echo/v4
+go get modernc.org/sqlite
+```
+
+`modernc.org/sqlite` is **pure Go** (no C compiler). That keeps “first project” setups simple. You can read *why* that matters in [SQLite drivers](#sqlite-drivers-new-to-go) below.
+
+3. **Apply `schema.sql` on startup** the same way `database.init_db()` does: read the file, `db.Exec` each statement (or use `Execute` in a transaction). Optionally port `seed_demo_data_if_empty()` so an empty DB gets the ten demo rounds.
+
+4. **Open the database once** when the program starts (`sql.Open`), put the `*sql.DB` in a variable, and reuse it in your HTTP handlers (similar to a single connection pool in other stacks). **Never** build SQL by gluing strings with user input — always use `?` placeholders and arguments, like Python’s parameterized queries.
+
+5. **Turn on foreign keys for SQLite.** Easiest with modernc: use a DSN like `file:golf_scorecard.db?_fk=1`. If foreign deletes “don’t work,” this is usually the reason.
+
+6. **Wire Echo routes** so they match this README’s HTTP API. **Important:** register **fixed paths** like `/api/rounds/page` and `/api/rounds/count` **before** `/api/rounds/:id`. If `:id` comes first, Echo may treat the word `page` as an id.
+
+7. **Serve the static UI:** `GET /` → `public/index.html`; `/static/*` → files under `public/`. Echo’s docs show `Static` and serving a single file — see [Echo — Static content](https://echo.labstack.com/docs/cookbook/static-files).
+
+8. **JSON:** For a request body, define a struct with tags and use `c.Bind(&body)`. For responses, `return c.JSON(http.StatusOK, value)`. Compute `totalPar`, `totalScore`, `relativeToPar` in code like you do in Python.
+
+### Echo tips (still beginner-level)
+
+- Echo is an **HTTP router + helpers**: it listens on a port, matches paths, runs your functions, and helps with JSON.
+- Official starting point: [Echo — Quick start](https://echo.labstack.com/docs/quick-start).
+- Useful middleware: [Logger](https://echo.labstack.com/middleware/logger) (see each request) and [Recover](https://echo.labstack.com/middleware/recover) (avoid crashing the whole server on a panic).
+
+### SQLite drivers (new to Go)
+
+Go’s `database/sql` does not speak SQLite by itself — you import **a driver** and usually register it with a blank import:
+
+```go
+import (
+  "database/sql"
+  _ "modernc.org/sqlite"
+)
+```
+
+Then open with a driver name such as `sqlite` (check the driver’s README for the exact string).
+
+| Driver | Plain-English description |
+|--------|----------------------------|
+| [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) | Pure Go — **recommended for beginners.** No Xcode/gcc “CGO” setup. DSN example: `file:golf_scorecard.db?_fk=1`. |
+| [`github.com/mattn/go-sqlite3`](https://github.com/mattn/go-sqlite3) | Uses C code under the hood (**CGO**). Very common in older examples, but your first build can fail if no C toolchain is installed. |
+
+More background: [Go — Accessing databases](https://go.dev/doc/database/querying), [SQLite — foreign_keys pragma](https://sqlite.org/pragma.html#pragma_foreign_keys).
+
+### Troubleshooting (what the message usually means)
+
+- **`go: command not found`:** Go is not installed or not on your `PATH`. Revisit [https://go.dev/doc/install](https://go.dev/doc/install).
+- **`cannot find package` / tidy errors:** Run `go mod tidy` from the folder that contains `go.mod`.
+- **`database is locked` (SQLite):** Often “too many writers” or open transactions. For small apps, try [`db.SetMaxOpenConns(1)`](https://pkg.go.dev/database/sql#DB.SetMaxOpenConns) and one shared `*sql.DB`.
+- **Deletes don’t remove child holes:** Foreign keys are off. Fix the DSN (`_fk=1`) or run `PRAGMA foreign_keys = ON` per connection (driver-dependent).
+- **404 on CSS/JS:** Wrong folder in `echo.Static`, or HTML paths missing the leading `/static/`.
+- **JSON fields missing or always empty:** Struct fields used for JSON must be **exported** (capitalized) **and** usually have `` `json:"courseName"` `` tags matching the frontend.
+- **Build errors mentioning `cgo`:** You’re on `go-sqlite3` without a C compiler — switch to `modernc.org/sqlite` or install a toolchain; see [Go — CGO](https://go.dev/wiki/cgo).
+- **`embed` / “file not found” in binary:** Paths in `//go:embed` use forward slashes; read [embed](https://pkg.go.dev/embed) slowly once — it trips up many newcomers.
+
+### Where to learn Go before you port the whole app
+
+Do these in order; they assume **no prior Go**:
+
+1. [A Tour of Go](https://go.dev/tour/welcome/1) — interactive basics (syntax, types, loops, pointers).
+2. [Go basics (Go.dev)](https://go.dev/learn/) — curated links.
+3. [Effective Go](https://go.dev/doc/effective_go) — style and idioms (read in small chunks).
+4. [Echo documentation](https://echo.labstack.com/docs) — your HTTP layer.
+5. [Package documentation (`pkg.go.dev/std`)](https://pkg.go.dev/std) — look up `database/sql`, `embed`, `net/http`.
+
+Reference: [SQLite documentation](https://sqlite.org/docs.html).
+
+If you keep routes and JSON identical to this Python app, you can port the **server** line by line in spirit: **schema → DB open → HTTP routes → JSON structs**. The `public/` folder can stay the same.
+
