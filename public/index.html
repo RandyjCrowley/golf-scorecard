@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Golf Scorecard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <h1>Golf Scorecard</h1>
+      <p class="tagline">Track a 9- or 18-hole round locally</p>
+    </header>
+
+    <main class="layout">
+      <section class="card form-card">
+        <h2 id="form-title">New round</h2>
+        <form id="round-form" class="form">
+          <input type="hidden" id="edit-round-id" value="" />
+
+          <label class="field">
+            <span>Course name</span>
+            <input type="text" id="course-name" name="courseName" required autocomplete="off" />
+          </label>
+
+          <label class="field">
+            <span>Player name</span>
+            <input type="text" id="player-name" name="playerName" required autocomplete="name" />
+          </label>
+
+          <label class="field">
+            <span>Date</span>
+            <input type="date" id="round-date" name="date" required />
+          </label>
+
+          <fieldset class="field inline-field">
+            <legend>Number of holes</legend>
+            <label class="radio"><input type="radio" name="holeCount" value="9" /> 9 holes</label>
+            <label class="radio"><input type="radio" name="holeCount" value="18" checked /> 18 holes</label>
+          </fieldset>
+
+          <div id="holes-container" class="holes-grid" aria-live="polite"></div>
+
+          <div class="totals card-inner">
+            <div class="total-row"><span>Total par</span><strong id="total-par">0</strong></div>
+            <div class="total-row"><span>Total score</span><strong id="total-score">0</strong></div>
+            <div class="total-row highlight">
+              <span>Relative to par</span>
+              <strong id="relative-par">E</strong>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="submit" id="save-btn" class="btn primary">Save round</button>
+            <button type="button" id="cancel-edit" class="btn ghost hidden">Cancel edit</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card list-card">
+        <h2>Saved rounds</h2>
+        <form id="list-filters" class="list-filters">
+          <label class="field filter-field">
+            <span>Player name</span>
+            <input type="search" id="filter-player-name" placeholder="Contains…" autocomplete="off" />
+          </label>
+          <label class="field filter-field">
+            <span>Course name</span>
+            <input type="search" id="filter-course-name" placeholder="Contains…" autocomplete="off" />
+          </label>
+          <div class="filter-actions">
+            <button type="submit" class="btn small primary" id="filter-apply">Search</button>
+            <button type="button" class="btn small ghost" id="filter-clear">Clear</button>
+          </div>
+        </form>
+        <p id="list-empty" class="muted">No rounds yet. Save one above.</p>
+        <div id="list-pagination" class="list-pagination hidden" aria-label="Rounds pagination">
+          <button type="button" id="pager-prev" class="btn small ghost">Previous</button>
+          <span id="pager-status" class="pager-status"></span>
+          <button type="button" id="pager-next" class="btn small ghost">Next</button>
+        </div>
+        <ul id="rounds-list" class="rounds-list"></ul>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>
